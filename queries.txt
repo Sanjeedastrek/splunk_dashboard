@@ -1,0 +1,67 @@
+Report 1: US police shootings over 10 years from 2015 to 2024
+
+eventtype="washington_shootings" | rename state as state_code, name as victim_name 
+| eval startunix = strptime(date, "%Y-%m-%d")
+| eval formatted_date = strftime(startunix, "%Y-%m-%d")
+| table formatted_date, city, state_name, age, police_departments_involved
+
+eventtype SPL: source="2024-07-23-washington-post-police-shootings-export.csv" host="local" index="shooting"
+
+Report 2: Victim counts against 4 age groups
+
+eventtype="washington_shootings" | rename state as state_code, name as victim_name | `age_range(age)`
+
+`age_range(age)` definition:
+eval age_group = case($age$ < 18, "<18", $age$ >= 18 AND $age$ <= 30, "18-30", $age$ >= 31 AND $age$ <= 50, "31-50", $age$ > 50, ">50")
+| stats count by age_group
+
+Report 3: Correlation Between Mental Illness Indicators and Fleeing Actions
+
+eventtype="washington_shootings"
+| stats count by signs_of_mental_illness, flee
+| eventstats sum(count) as total_count by signs_of_mental_illness
+| eval percentage = round((count / total_count) * 100, 2)
+| eval combined = count . " (" . percentage . "%)"
+| xyseries signs_of_mental_illness flee combined
+
+Report 4: Victims' race
+
+`param_macro1(race)`
+
+param_macro1(race) definition:
+`macro_windows_events` | stats count by $field$
+
+The field can be level, race, flag. This report uses race field. 
+
+macro_windows_events definition:
+index="windows_event_log"  | fields - category, class, transport, level
+
+Report 5: Statewise shooting counts in 10 years
+
+eventtype="washington_shootings" | rename state as state_code | stats count by state_name | sort -count
+
+Report 6: Most violent years in descending order
+
+eventtype="washington_shootings" | eval startunix = strptime(date, "%Y-%m-%d") 
+| eval year = strftime(startunix, "%Y")
+| eval month=   strftime(startunix, "%m")
+| stats count by year
+| sort -count
+
+Report 7: Statewise count in 2023, the most violent year
+
+eventtype="washington_shootings"
+| eval startunix = strptime(date, "%Y-%m-%d")
+| eval year = strftime(startunix, "%Y")
+| search year=[ 
+    search eventtype="washington_shootings"
+    | eval startunix = strptime(date, "%Y-%m-%d")
+    | eval year = strftime(startunix, "%Y")
+    | stats count as incident_count by year
+    | sort - incident_count
+    | head 1
+    | return $year
+]
+| stats count as incident_count by state
+| sort - incident_count
+| head 10
